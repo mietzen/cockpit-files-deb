@@ -1,0 +1,62 @@
+name: Build Debian Package (Bookworm)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  build-deb:
+    runs-on: ubuntu-latest
+
+    container:
+      image: debian:bookworm
+      options: --user root
+
+    steps:
+    - name: Checkout dummy repo (needed for workflow context)
+      uses: actions/checkout@v4
+
+    - name: Install system dependencies
+      run: |
+        apt-get update
+        apt-get install -y \
+          curl \
+          git \
+          gettext \
+          make \
+          devscripts \
+          build-essential \
+          fakeroot \
+          ca-certificates
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        check-latest: true
+
+    - name: Clone cockpit-files repository
+      run: |
+        git clone https://github.com/cockpit-project/cockpit-files.git cockpit-files
+
+    - name: Build .deb package from cockpit-files
+      run: |
+        cd cockpit-files
+        make packaging/debian/changelog
+        make dist
+
+        mkdir -p ../deb-build
+        tar --strip-components=1 -C ../deb-build -xf cockpit-files-*.tar.xz
+
+        cd ../deb-build
+        debuild -us -uc
+
+    - name: Upload .deb artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: cockpit-deb-package
+        path: |
+          deb-build/*.deb
+          deb-build/*.build
+          deb-build/*.changes
